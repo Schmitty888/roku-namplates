@@ -3,81 +3,72 @@ import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
-from reportlab.lib.colors import HexColor
 import io
+import os
 
-# Page Configuration
 st.set_page_config(page_title="Roku Nameplate Generator", page_icon="🏷️")
 st.title("Roku Desk Nameplate Generator")
-st.markdown("Upload your employee Excel/CSV to generate 8x2 formatted nameplates with crop marks.")
 
-# 1. File Uploader
 uploaded_file = st.file_uploader("Upload Employee List (Excel or CSV)", type=['csv', 'xlsx'])
 
 if uploaded_file:
-    # Read data based on file type
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
-
-    st.write("Preview of data:", df.head())
+    df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
 
     if st.button('Generate PDF'):
         buf = io.BytesIO()
         c = canvas.Canvas(buf, pagesize=letter)
         width, height = letter
         
-        # Brand & Layout Specs
-        roku_purple = HexColor("#662D91")
-        np_w, np_h = 8 * inch, 2 * inch
+        # Dimensions: 7.75" wide x 2" high
+        np_w, np_h = 7.75 * inch, 2 * inch
         margin_x = (width - np_w) / 2
-        y_pos = height - 1.25 * inch - np_h  # Start near top
+        y_pos = height - 1.25 * inch - np_h 
+
+        logo_path = "Roku-Logo-Purple-Digital.jpg"
 
         for index, row in df.iterrows():
-            # Draw Corner Tick Marks (For Cutting)
-            c.setStrokeColorRGB(0.8, 0.8, 0.8) # Light grey ticks
+            # --- Draw Crop Marks ---
+            c.setStrokeColorRGB(0.8, 0.8, 0.8)
             c.setLineWidth(0.5)
-            tick_size = 0.2 * inch
-            # Coordinates for the 4 corners
+            t_size = 0.2 * inch
             corners = [(margin_x, y_pos), (margin_x + np_w, y_pos), 
                        (margin_x, y_pos + np_h), (margin_x + np_w, y_pos + np_h)]
             for cx, cy in corners:
-                c.line(cx - tick_size, cy, cx + tick_size, cy) # Horiz
-                c.line(cx, cy - tick_size, cx, cy + tick_size) # Vert
+                c.line(cx - t_size, cy, cx + t_size, cy)
+                c.line(cx, cy - t_size, cx, cy + t_size)
 
-            # Header: ROKU Logo (Upper Left)
-            c.setFillColor(roku_purple)
-            c.setFont("Helvetica-Bold", 20)
-            c.drawString(margin_x + 0.4 * inch, y_pos + np_h - 0.6 * inch, "Roku")
+            # --- 1. Top-Left Logo Anchoring (Pushed Left 1/8") ---
+            if os.path.exists(logo_path):
+                logo_w = 1.8 * inch
+                logo_h = 0.4 * inch
+                # Pinned to top with 0.15" margin
+                logo_y = (y_pos + np_h) - logo_h - (0.15 * inch)
+                
+                # X=0.0 to push left 1/8" from previous version
+                c.drawImage(logo_path, margin_x + 0.0 * inch, logo_y, 
+                            width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
             
-            # Name: Justified Left (Under Logo)
+            # --- 2. Name & Location Positioning ---
+            baseline_y = y_pos + 0.35 * inch
+            font_size = 26
+
+            # Name: Bold (Left Justified at 0.25")
             c.setFillColorRGB(0, 0, 0)
-            c.setFont("Helvetica-Bold", 26)
-            baseline_y = y_pos + 0.5 * inch
-            c.drawString(margin_x + 0.4 * inch, baseline_y, str(row['Name']))
+            c.setFont("Helvetica-Bold", font_size)
+            c.drawString(margin_x + 0.25 * inch, baseline_y, str(row['Name']))
             
-            # Location: Justified Right (Same height as name)
-            c.setFont("Helvetica", 18)
+            # Location: Regular (Right Justified at 0.25")
+            c.setFont("Helvetica", font_size)
             loc_str = str(row['Desk Location'])
-            text_w = c.stringWidth(loc_str, "Helvetica", 18)
-            c.drawString(margin_x + np_w - 0.4 * inch - text_w, baseline_y, loc_str)
+            text_w = c.stringWidth(loc_str, "Helvetica", font_size)
+            c.drawString(margin_x + np_w - 0.25 * inch - text_w, baseline_y, loc_str)
             
-            # Advance to next nameplate slot
-            y_pos -= (np_h + 1.0 * inch) # 1 inch gap between plates
-            
-            # Check if we need a new page
+            y_pos -= (np_h + 1.0 * inch)
             if y_pos < 1.0 * inch:
                 c.showPage()
                 y_pos = height - 1.25 * inch - np_h
 
         c.save()
         buf.seek(0)
-        
-        st.success("Success! Your PDF is ready.")
-        st.download_button(
-            label="Download Nameplates PDF",
-            data=buf,
-            file_name="Roku_Bulk_Nameplates.pdf",
-            mime="application/pdf"
-        )
+        st.success("PDF Generated with Final Aligned Layout!")
+        st.download_button("Download Final Nameplates", buf, "Roku_Final_Nameplates.pdf", "application/pdf")
